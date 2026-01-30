@@ -1,0 +1,196 @@
+{
+  "version": "1.5.0",
+  "scanned_roots": [
+    "src",
+    "backend/src",
+    "css"
+  ],
+  "entry_points": [
+    "src/Main.res",
+    "src/index.js",
+    "backend/src/main.rs",
+    "src/App.res"
+  ],
+  "settings": {
+    "min_dead_code_loc": 30,
+    "base_loc_limit": 400,
+    "hard_ceiling_loc": 800,
+    "soft_floor_loc": 300,
+    "max_session_complexity": 500.0,
+    "merge_score_threshold": 1.2,
+    "nesting_weight": 0.5,
+    "density_weight": 1.2,
+    "drag_target": 1.8,
+    "confidence_threshold": 0.95,
+    "state_weight": 6.0,
+    "max_depth_threshold": 4
+  },
+  "templates": {
+    "legend": "## 📚 LEGEND & DEFINITIONS\n*   **LOC:** Total non-comment lines. (Lower is easier to read).\n*   **Drag:** Complexity multiplier. (Target: < 1.8). High Drag means AI agents struggle to track state.\n*   **Cognitive Capacity:** Inference energy required (Goal: < 100%).\n*   **Read Tax:** Tokens and time overhead incurred when switching between many small files.\n*   **AI Context Fog:** Regions of code with overlapping logic paths that cause model hallucination.\n\n---\n\n",
+    "surgical_objective": "## ⚡ Surgical Objective\n**Role:** Senior Refactoring Engineer\n**Goal:** De-bloat module to < {drag_t} Drag Score.\n**Strategy:** Extract highlighted 'Hotspots' into sub-modules.\n**Optimal State:** The file becomes a pure 'Orchestrator' or 'Service', with complex math/logic moved to specialized siblings.\n\n### 🎯 Targets (Focus Area)\nThe Semantic Engine has identified the following specific symbols for refactoring:",
+    "violation_objective": "## 🛡️ Violation Objective\n**Role:** Code Safety Officer\n**Goal:** Fix critical anti-patterns or missing safety nets.\n**Priority:** High. These issues risk stability or build integrity.\n**Optimal State:** Zero forbidden patterns remaining in the module.",
+    "structural_objective": "## 🏗️ Structural Objective\n**Role:** File System Organizer\n**Goal:** Flatten deep hierarchies (Max depth 4) to minimize Traversal Tax.\n**Optimal State:** Features live in 'Feature Pods' where UI and Logic are adjacent.",
+    "merge_objective": "## 🧩 Merge Objective\n**Role:** Architecture Cleanup Bot\n**Goal:** Reduce File Fragmentation (Read Tax).\n**Constraint:** Combined file must not exceed 800 LOC.\n**Optimal State:** Related small modules are unified into a single context window, reducing token consumption.",
+    "ambiguity_objective": "## 🏷️ Ambiguity Objective\n**Role:** Code Taxonomist\n**Goal:** Classify unknown files to enable accurate analysis.\n**Action:** Add an @efficiency-role: <role> tag to the file header (CRITICAL: must include the colon).\n**Note:** If a file is legacy, third-party, or should not be subject to splitting/merging rules, classify it as **ignored**.\n**Optimal State:** Every file has a clear architectural identity, allowing the analyzer to apply correct LOC limits.\n\n### 📚 Valid Roles\n{roles}"
+  },
+  "exclusion_rules": {
+    "folders": [
+      "/node_modules/",
+      "/target/",
+      "/lib/",
+      "/.git/",
+      "/.next/",
+      "/old_ref/",
+      "/dist/",
+      "/build/",
+      "/cache/",
+      "/_dev-system/",
+      "/public/",
+      "/modules/",
+      "/vendor/",
+      "/out/",
+      "/coverage/",
+      "/src/components/ui/"
+    ],
+    "files": [
+      "output.css",
+      "package-lock.json",
+      "yarn.lock",
+      "analyzer_state.json"
+    ],
+    "extensions": [
+      ".min.js",
+      ".bundle.js",
+      ".bs.js"
+    ]
+  },
+  "profiles": {
+    "rust": {
+      "extensions": [
+        ".rs"
+      ],
+      "complexity_dictionary": {
+        "unsafe": 3.0,
+        "unwrap()": 2.0,
+        "panic!": 2.5,
+        "&mut": 0.5,
+        "match": 0.3,
+        "loop": 1.0
+      },
+      "forbidden_patterns": [
+        "unwrap()",
+        "panic!",
+        "todo!"
+      ]
+    },
+    "rescript": {
+      "extensions": [
+        ".res"
+      ],
+      "complexity_dictionary": {
+        "->": 0.0,
+        "=>": 0.5,
+        "if ": 0.5,
+        "switch": 0.5,
+        "| ": 0.1,
+        "mutable": 3.0,
+        "Obj.magic": 10.0,
+        "useState": 2.0,
+        "useReducer": 3.0
+      },
+      "forbidden_patterns": [
+        "console.log",
+        "mutable ",
+        "Obj.magic"
+      ]
+    },
+    "css": {
+      "extensions": [
+        ".css"
+      ],
+      "complexity_dictionary": {
+        "!important": 5.0,
+        "@media": 1.0,
+        "{": 0.2
+      },
+      "forbidden_patterns": [
+        "!important"
+      ]
+    }
+  },
+  "taxonomy": {
+    "domain-logic": {
+      "multiplier": 0.7,
+      "desc": "Pure business logic, entities, and domain services."
+    },
+    "ui-component": {
+      "multiplier": 1.3,
+      "desc": "Visual presentation and user interaction layers."
+    },
+    "infra-adapter": {
+      "multiplier": 1.1,
+      "desc": "External API clients, database drivers, and third-party bindings."
+    },
+    "infra-binding": {
+      "multiplier": 2.5,
+      "desc": "External JS/FFI bindings. High LOC permitted due to low logic density."
+    },
+    "data-model": {
+      "multiplier": 1.5,
+      "desc": "Type definitions, schemas, and DTOs (low logic density)."
+    },
+    "orchestrator": {
+      "multiplier": 0.8,
+      "desc": "App entry points and high-level flow control."
+    },
+    "service-orchestrator": {
+      "multiplier": 0.8,
+      "desc": "Complex coordination between multiple domain services."
+    },
+    "state-reducer": {
+      "multiplier": 0.5,
+      "desc": "Deterministic state transitions (Redux/Store style)."
+    },
+    "state-hook": {
+      "multiplier": 0.7,
+      "desc": "Custom hooks with high state-to-logic ratio."
+    },
+    "util-pure": {
+      "multiplier": 0.4,
+      "desc": "Side-effect free helper functions."
+    },
+    "infra-config": {
+      "multiplier": 1.5,
+      "desc": "Build scripts, project configuration, and environment setups."
+    },
+    "ignored": {
+      "multiplier": 0.0,
+      "desc": "Exclude this file from all efficiency metrics and tasks."
+    }
+  },
+  "exceptions": [
+    {
+      "pattern": "**/ViewerPool.res",
+      "multiplier": 2.0,
+      "reason": "Authorized state management"
+    },
+    {
+      "pattern": "**/ViewerState.res",
+      "multiplier": 2.0,
+      "reason": "High-frequency state updates"
+    },
+    {
+      "pattern": "src/Main.res",
+      "max_loc": 500,
+      "reason": "App Entry Point orchestrator"
+    }
+  ],
+  "protected_patterns": [
+    "@efficiency-role: orchestrator",
+    "@efficiency-role: entry-point",
+    "@efficiency-role: service-orchestrator",
+    "src/Main.res",
+    "src/App.res",
+    "backend/src/main.rs"
+  ]
+}
