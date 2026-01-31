@@ -1,0 +1,16 @@
+id: refactor-jsx-prop
+language: rescript
+rule:
+  pattern:
+    context: "<Component _PROP=_VAL />"
+    selector: jsx_attribute
+fix: "newProp={$VAL}"
+
+---
+id: refactor-switch-case
+language: rescript
+rule:
+  pattern:
+    context: "switch x { | _LHS => _RHS }"
+    selector: switch_match
+fix: "| $LHS => NewHandler($RHS)"

@@ -11,6 +11,7 @@ impl MapParser {
     }
 
     /// Returns a list of all known file paths from the map
+    #[allow(dead_code)]
     pub fn get_known_files() -> Vec<String> {
         let content = Self::get_context_map();
         let mut files = Vec::new();

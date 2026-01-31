@@ -1,0 +1,5 @@
+customLanguages:
+  rescript:
+    libraryPath: /home/r2/Desktop/rumi-cli/parsers/rescript.so
+    extensions: [res, resi]
+    expandoChar: "_"

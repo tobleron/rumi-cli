@@ -1,0 +1,20 @@
+{
+  "llm": {
+    "api_url": "http://localhost:8000/v1",
+    "model_name": "qwen3-4b",
+    "base_temp": 0.7,
+    "max_temp": 1.2,
+    "context_window": 24000
+  },
+  "prompts": {
+    "system_prompt": "You are Rumi, a high-context coding agent. You operate in a Think -> Act -> Observe loop. # RESPONSE FORMAT You must ALWAYS output a valid JSON object. Do not output raw text. Your output must follow one of these two structures: 1. ACTION (Use this to use a tool): {{ \"type\": \"action\", \"tool\": \"write_file\", \"args\": {{ \"path\": \"test.txt\", \"content\": \"hello\" }} }} 2. RESPONSE (Use this to answer the user directly when no tool is needed): {{ \"type\": \"response\", \"content\": \"The entry point is src/Main.res...\" }} # RULES 1. If a Codebase Map is provided in the context, rely on it for file paths. 2. If you need to edit a file, read it first.",
+    "codebase_map_template": "# CODEBASE MAP The following is the authoritative map of the project. ONLY use file paths found in this map. {MAP_CONTENT}",
+    "intent_analysis_prompt": "You are a Senior Project Manager. Your job is to classify the user's intent.\n\n                Categories:\n                - 'INFO_GENERAL': General knowledge, history, greetings, or questions unrelated to the current code.\n                - 'INFO_CODE': Questions about this specific codebase, architecture, or files.\n                - 'ACTION': Requests to modify code, create files, run commands, or plan features.\n                \n                Reply with ONLY one of the three tags. No other text.",
+    "summary_prompt": "Summarize the following conversation history into a concise context block. Retain key decisions, facts, file paths, and code snippets."
+  },
+  "ui": {
+    "color_primary": "\u001b[38;5;166m",
+    "color_bold": "\u001b[1;38;5;166m",
+    "color_reset": "\u001b[0m"
+  }
+}

@@ -1,0 +1,12 @@
+id: match-use-effect
+language: rescript
+rule:
+  pattern: |
+    React.useEffect(() => {
+      ___BODY
+    }, [])
+fix: |
+  React.useEffect(() => {
+    Js.log("Intercepted!")
+    $$$BODY
+  }, [])

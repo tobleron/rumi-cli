@@ -1,302 +1,279 @@
-use dotenvy::dotenv;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use std::env;
-
-#[derive(Clone)]
-pub struct LlmClient {
-    client: Client,
-    api_url: String,
-    model_name: String,
-    base_temp: f32,
-    max_temp: f32,
-}
-
-#[derive(Serialize)]
-struct ChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Serialize)]
-struct CompletionRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    temperature: f32,
-    max_tokens: u32,
-}
-
-#[derive(Deserialize, Debug)]
-struct CompletionResponse {
-    choices: Vec<Choice>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Choice {
-    message: MessageContent,
-}
-
-#[derive(Deserialize, Debug)]
-struct MessageContent {
-    content: String,
-}
-
-impl LlmClient {
-    pub fn new() -> Self {
-        dotenv().ok();
-        let api_url = env::var("VLLM_API_URL").expect("VLLM_API_URL must be set");
-        let model_name = env::var("MODEL_NAME").expect("MODEL_NAME must be set");
-        let base_temp = env::var("BASE_TEMPERATURE")
-            .unwrap_or("0.7".to_string())
-            .parse()
-            .unwrap_or(0.7);
-        let max_temp = env::var("MAX_TEMPERATURE")
-            .unwrap_or("1.2".to_string())
-            .parse()
-            .unwrap_or(1.2);
-
-        LlmClient {
-            client: Client::new(),
-            api_url,
-            model_name,
-            base_temp,
-            max_temp,
-        }
-    }
-
-    fn calculate_temperature(&self, loop_count: u32, is_complex: bool) -> f32 {
-        let start_temp = if is_complex {
-            self.base_temp + 0.1
-        } else {
-            self.base_temp
-        };
-        let dynamic_temp = start_temp + (loop_count as f32 * 0.1);
-        if dynamic_temp > self.max_temp {
-            self.max_temp
-        } else {
-            dynamic_temp
-        }
-    }
-
-    pub async fn chat_completion(
-        &self,
-        system_prompt: &str,
-        user_query: &str,
-        loop_count: u32,
-        is_complex: bool,
-    ) -> Result<String, Box<dyn std::error::Error>> {
-        let temp = self.calculate_temperature(loop_count, is_complex);
-        println!("Thinking with Temp: {}, Attempt: {}", temp, loop_count + 1);
-
-        let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt.to_string(),
-            },
-            ChatMessage {
-                role: "user".to_string(),
-                content: user_query.to_string(),
-            },
-        ];
-
-        let request_body = CompletionRequest {
-            model: self.model_name.clone(),
-            messages,
-            temperature: temp,
-            max_tokens: 2048,
-        };
-
-        let url = format!("{}/chat/completions", self.api_url);
-        
-        let res = self.client
-            .post(&url)
-            .json(&request_body)
-            .send()
-            .await?;
-
-        if !res.status().is_success() {
-             let error_text = res.text().await?;
-             return Err(format!("API Error: {}", error_text).into());
-        }
-
-        let response_json: CompletionResponse = res.json().await?;
-        
-        if let Some(choice) = response_json.choices.first() {
-            Ok(choice.message.content.clone())
-        } else {
-            Err("No content in response".into())
-        }
-    }
-}
+use clap::Parser;
 
 mod tools;
-
 mod map_parser;
+mod thinking_engine;
+mod llm_client;
+mod session_manager;
+mod config;
 
-
-
-use tools::{execute_tool, ToolCall};
-
+use tools::{execute_tool, AgentOutput};
 use map_parser::MapParser;
-
-
-
-// ... existing LlmClient ...
-
-
-
-#[tokio::main]
-
-async fn main() {
-
-    println!("Rumi-CLI: Active and connected to vLLM (24k Context)");
-
-    let client = LlmClient::new();
-
-
-
-    // Load the Map
-
-    let project_map = MapParser::get_context_map();
-
-    println!("Loaded MAP.md ({} bytes)", project_map.len());
-
-
-
-    let system_prompt = format!(r#"You are Rumi, a high-context coding agent.
-
-You operate in a Think -> Act -> Observe loop.
-
-
-
-# CODEBASE MAP
-
-The following is the authoritative map of the project. ONLY use file paths found in this map.
-
-{}
-
-
-
-# TOOL USAGE
-
-To perform actions, you MUST output a valid JSON object:
-
-{{
-
-  "tool": "read_file",
-
-  "args": {{ "path": "src/Main.res" }}
-
-}}
-
-OR
-
-{{
-
-  "tool": "write_file",
-
-  "args": {{ "path": "path/to/file", "content": "..." }}
-
-}}
-
-OR
-
-{{
-
-  "tool": "run_shell",
-
-  "args": {{ "command": "cargo check" }}
-
-}}
-
-
-
-# RULES
-
-1. Always explain your reasoning briefly before outputting the JSON tool call.
-
-2. Rely on the Codebase Map to find files. Do not guess paths.
-
-3. If you need to edit a file, read it first."#, project_map);
-
-
-
-    let mut user_query = String::from("Analyze the map and tell me what the entry point of the application is.");
-
-    let mut loop_count = 0;
-
-
-
-    loop {
-
-        match client.chat_completion(&system_prompt, &user_query, loop_count, false).await {
-
-            Ok(response) => {
-
-                println!("\n--- Rumi Thinks ---\n{}", response);
-
-
-
-                // Simple parser for JSON in response
-
-                if let Some(json_start) = response.find('{') {
-
-                    if let Some(json_end) = response.rfind('}') {
-
-                        let json_str = &response[json_start..json_end + 1];
-
-                        if let Ok(tool_call) = serde_json::from_str::<ToolCall>(json_str) {
-
-                            let result = execute_tool(tool_call);
-
-                            println!("\n--- Tool Execution ({}) ---\n{}", result.tool_name, result.output);
-
-                            
-
-                            // Feed the observation back into the next loop
-
-                            user_query = format!("Observation from {}:\n{}", result.tool_name, result.output);
-
-                            loop_count += 1;
-
-                            
-
-                            if loop_count > 5 {
-
-                                println!("Max loops reached. Stopping.");
-
-                                break;
-
-                            }
-
-                            continue;
-
-                        }
-
-                    }
-
-                }
-
-                
-
-                println!("\nTask appears complete or no tool call found.");
-
-                break;
-
-            }
-
-            Err(e) => {
-
-                eprintln!("Error: {}", e);
-
-                break;
-
-            }
-
-        }
-
-    }
-
+use thinking_engine::ThinkingEngine;
+use llm_client::{LlmClient, ChatMessage};
+use session_manager::SessionManager;
+use config::RumiConfig;
+
+use std::io::{self, Write};
+use std::time::Instant;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// The query to send to Rumi
+    #[arg(short, long, default_value = "Analyze the map and tell me what the entry point of the application is.")]
+    query: String,
 }
 
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+    let config = RumiConfig::load();
+    println!("{}Rumi-CLI: Active and connected to vLLM (24k Context){}", config.ui.color_bold, config.ui.color_reset);
 
+    let client = LlmClient::new(&config);
+    let session_manager = SessionManager::new();
+    println!("Session ID: {}", session_manager.session_id);
+
+    // Load the Map
+    let project_map = MapParser::get_context_map();
+    println!("Loaded MAP.md ({} bytes)", project_map.len());
+    println!("Type {}/exit{} or {}/quit{} to stop.", config.ui.color_primary, config.ui.color_reset, config.ui.color_primary, config.ui.color_reset);
+
+    // Initial query from args (if provided explicitly, run it first)
+    // If it's the default value, we can choose to skip it or run it. 
+    // For now, let's treat the arg as the "first" command, then drop to REPL.
+    
+    let mut current_query = args.query.clone();
+
+    // Check if the user actually provided a query or if it's just the default
+    // This is a heuristic; technically a user could type the default string.
+    let default_query = "Analyze the map and tell me what the entry point of the application is.";
+    if current_query == default_query {
+        println!("\n--- {}Interactive Mode{} ---", config.ui.color_bold, config.ui.color_reset);
+        print!("{}>{} ", config.ui.color_bold, config.ui.color_reset);
+        io::stdout().flush().unwrap();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("Failed to read line");
+        current_query = input.trim().to_string();
+    }
+
+    // Initialize Chat History
+    let mut chat_history: Vec<ChatMessage> = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: config.prompts.system_prompt.clone(),
+        }
+    ];
+    let mut map_loaded = false;
+
+    loop {
+        // Auto-save history
+        session_manager.save_history(&chat_history);
+
+        if current_query.eq_ignore_ascii_case("exit") 
+           || current_query.eq_ignore_ascii_case("quit")
+           || current_query.eq_ignore_ascii_case("/exit")
+           || current_query.eq_ignore_ascii_case("/quit")
+        {
+            println!("{}Rumi-CLI: Goodbye!{}", config.ui.color_bold, config.ui.color_reset);
+            break;
+        }
+
+        if current_query.eq_ignore_ascii_case("/compress") {
+            if chat_history.len() <= 3 {
+                println!("{}History too short to compress.{}", config.ui.color_primary, config.ui.color_reset);
+            } else {
+                println!("{}Compressing history...{}", config.ui.color_bold, config.ui.color_reset);
+                
+                // Keep System (0) and Last 2
+                let system_msg = chat_history[0].clone();
+                let last_two = chat_history[chat_history.len()-2..].to_vec();
+                
+                // Summarize the middle
+                let middle_msgs = chat_history[1..chat_history.len()-2].to_vec();
+                let summary_prompt_msg = ChatMessage {
+                    role: "system".to_string(),
+                    content: config.prompts.summary_prompt.clone(),
+                };
+                
+                let mut summarization_context = vec![summary_prompt_msg];
+                summarization_context.extend(middle_msgs);
+
+                match client.chat_completion(summarization_context, 0, false).await {
+                    Ok((summary, _)) => {
+                        println!("{}Compression Complete.{}", config.ui.color_primary, config.ui.color_reset);
+                        let summary_msg = ChatMessage {
+                            role: "system".to_string(),
+                            content: format!("*** PREVIOUS CONTEXT SUMMARY ***\n{}", summary),
+                        };
+                        
+                        // Rebuild history
+                        chat_history = vec![system_msg, summary_msg];
+                        chat_history.extend(last_two);
+                        session_manager.save_history(&chat_history);
+                    },
+                    Err(e) => println!("Compression failed: {}", e),
+                }
+            }
+            
+            // Prompt again
+            print!("\n{}>{} ", config.ui.color_bold, config.ui.color_reset);
+            io::stdout().flush().unwrap();
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).expect("Failed to read line");
+            current_query = input.trim().to_string();
+            continue;
+        }
+
+        if current_query.is_empty() {
+             print!("{}>{} ", config.ui.color_bold, config.ui.color_reset);
+             io::stdout().flush().unwrap();
+             let mut input = String::new();
+             io::stdin().read_line(&mut input).expect("Failed to read line");
+             current_query = input.trim().to_string();
+             continue;
+        }
+
+        // --- Intent Analysis ---
+        let intent_prompt = config.prompts.intent_analysis_prompt.clone();
+        
+        let intent_messages = vec![
+            ChatMessage { role: "system".to_string(), content: intent_prompt },
+            ChatMessage { role: "user".to_string(), content: current_query.clone() }
+        ];
+
+        let mut current_task_input = current_query.clone();
+
+        match client.chat_completion(intent_messages, 0, false).await {
+            Ok((c_res, _)) => {
+                let classification = c_res.trim().to_uppercase();
+                
+                // Lazy Load Map if needed (INFO_CODE or ACTION)
+                if (classification.contains("ACTION") || classification.contains("INFO_CODE")) && !map_loaded {
+                    let map_msg = config.prompts.codebase_map_template.replace("{MAP_CONTENT}", &project_map);
+                    chat_history.insert(1, ChatMessage {
+                        role: "system".to_string(),
+                        content: map_msg,
+                    });
+                    map_loaded = true;
+                    println!("{}Context: Codebase Map loaded.{}", config.ui.color_primary, config.ui.color_reset);
+                }
+
+                if classification.contains("ACTION") {
+                    match ThinkingEngine::init_thought_process(&current_query, &project_map) {
+                        Ok(tp_id) => {
+                            println!("\n{}🧠 Initiating Action Plan: {} 🧠{}", config.ui.color_bold, tp_id, config.ui.color_reset);
+                            println!("Environment: thinking/{}/input.md", tp_id);
+                            
+                            // Redirect the agent to the thought process
+                            current_task_input = format!(
+                                "ID: {}. MANDATORY STEPS:\n\
+                                1. Use 'read_file' to read 'thinking/{}/input.md'.\n\
+                                2. Use 'write_file' to create 'thinking/{}/plan.md' with a detailed implementation strategy.\n\
+                                3. Confirm only after BOTH tools have been called.", 
+                                tp_id, tp_id, tp_id
+                            );
+                        },
+                        Err(e) => eprintln!("Failed to init thought process: {}", e),
+                    }
+                }
+            },
+            Err(e) => eprintln!("Intent check failed: {}", e),
+        }
+
+        // Add User Query to History
+        chat_history.push(ChatMessage {
+            role: "user".to_string(),
+            content: current_task_input,
+        });
+
+        let mut loop_count = 0;
+        
+        println!("{}Processing...{}", config.ui.color_primary, config.ui.color_reset);
+
+        // Task Execution Loop
+        loop {
+            let start_time = Instant::now();
+            match client.chat_completion(chat_history.clone(), loop_count, false).await {
+                Ok((response, usage_opt)) => {
+                    let duration = start_time.elapsed();
+                    if let Some(usage) = usage_opt {
+                        let tps = usage.completion_tokens as f64 / duration.as_secs_f64();
+                        println!("{}(Speed: {:.1} tok/s | In: {} | Out: {}){}", config.ui.color_primary, tps, usage.prompt_tokens, usage.completion_tokens, config.ui.color_reset);
+                    }
+                    
+                    // Add Assistant Response to History
+                    chat_history.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: response.clone(),
+                    });
+
+                    if let Some(json_start) = response.find('{') {
+                        if let Some(json_end) = response.rfind('}') {
+                            let json_str = &response[json_start..json_end + 1];
+                            
+                            match serde_json::from_str::<AgentOutput>(json_str) {
+                                Ok(output) => {
+                                    match output {
+                                        AgentOutput::Response { content } => {
+                                            println!("\n{}Rumi: {}{}", config.ui.color_bold, config.ui.color_reset, content);
+                                            break; // Task Complete
+                                        }
+                                        AgentOutput::Action { tool, args } => {
+                                            println!("\n{}--- Action: {} ---{}", config.ui.color_bold, tool, config.ui.color_reset);
+                                            let result = execute_tool(&tool, &args);
+                                            println!("{}", result.output);
+                                            
+                                            // SPECIAL: Notify user when a plan is created
+                                            if tool == "write_file" && args.get("path").and_then(|v| v.as_str()).map(|s| s.contains("plan.md")).unwrap_or(false) {
+                                                println!("\n{}✨ ACTION PLAN CREATED: {} ✨{}", config.ui.color_bold, args.get("path").unwrap(), config.ui.color_reset);
+                                            }
+
+                                            // Add Tool Result to History (as User Observation)
+                                            chat_history.push(ChatMessage {
+                                                role: "user".to_string(),
+                                                content: format!("Observation from {}:\n{}", result.tool_name, result.output),
+                                            });
+
+                                            loop_count += 1;
+                                            
+                                            if loop_count > 5 {
+                                                println!("Max loops reached.");
+                                                break;
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    println!("\n--- {}Rumi (Raw/Invalid JSON){} ---\n{}", config.ui.color_primary, config.ui.color_reset, response);
+                                    println!("JSON Parse Error: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // No JSON found, print raw response
+                        println!("\n--- {}Rumi (Text){} ---\n{}", config.ui.color_primary, config.ui.color_reset, response);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    break;
+                }
+            }
+        }
+
+        // Reset for next interaction
+        print!("\n{}>{} ", config.ui.color_bold, config.ui.color_reset);
+        io::stdout().flush().unwrap();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("Failed to read line");
+        current_query = input.trim().to_string();
+    }
+
+
+
+}

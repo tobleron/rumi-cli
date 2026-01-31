@@ -23,5 +23,8 @@ python3 -u -m vllm.entrypoints.openai.api_server \
   --max-num-seqs 4 \
   --enforce-eager \
   --disable-custom-all-reduce \
+  --enable-log-requests \
+  --enable-log-outputs \
+  --enable-force-include-usage \
   --port 8000 \
   --served-model-name qwen3-4b
