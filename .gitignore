@@ -1,1 +1,9 @@
 target/\nnode_modules/\n.DS_Store\n**/*.rs.bk
+LLM/
+
+
+# Added by cargo
+
+/target
+.env
+vllm_startup.log
